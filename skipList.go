@@ -239,7 +239,7 @@ func (s *SortedSet) Length() int64 {
 
 func (s *SortedSet) Set(key string, score float64) {
 	v, ok := s.dict[key]
-	s.dict[key] = &obj{key:key,score:score}
+
 	if ok {
 		if score != v.score {
 			s.sl.skipListDelete(key, v.score)
