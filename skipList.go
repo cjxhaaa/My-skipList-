@@ -2,6 +2,7 @@ package skipList
 
 import (
 	"math/rand"
+	"time"
 )
 
 const (
@@ -31,8 +32,9 @@ type (
 	}
 
 	obj struct {
-		key     string
-		score   float64
+		key       string
+		score     float64
+		timestamp int64              //记录一个生成时间
 	}
 
 	SortedSet struct {
@@ -242,9 +244,11 @@ func (s *SortedSet) Set(key string, score float64) {
 		if score != v.score {
 			s.sl.skipListDelete(key, v.score)
 			s.sl.skipListInsert(key, score)
+			s.dict[key].score = v.score
 		}
 	} else {
 		s.sl.skipListInsert(key, score)
+		s.dict[key] = &obj{key:key,score:score,timestamp:time.Now().Unix()}
 	}
 }
 
@@ -307,6 +311,14 @@ func (z *SortedSet) Increase(key string, descore float64) {
 	_, score := z.GetRank(key,false)
 	score += descore
 	z.Set(key,score)
+}
+
+func (s *SortedSet) GetTimeStamp(key string) int64 {
+	v, ok := s.dict[key]
+	if !ok {
+		return -1
+	}
+	return v.timestamp
 }
 
 
