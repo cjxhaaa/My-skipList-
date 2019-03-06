@@ -2,6 +2,7 @@ package skipList
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -34,13 +35,14 @@ type (
 	obj struct {
 		key       string
 		score     float64
-		timestamp int64              //记录一个生成时间
+		timestamp int64             //记录一个生成时间
 	}
 
 	SortedSet struct {
-		dict map[string]*obj
+		dict sync.Map
 		sl   *skipList
 	}
+
 )
 
 
@@ -92,8 +94,8 @@ func (sl *skipList) skipListInsert(key string, score float64) *skipListNode {
 		if x.level[i] != nil {
 			for x.level[i].forward != nil && (x.level[i].forward.score < score ||
 				(x.level[i].forward.score == score && x.level[i].forward.key < key)) {
-					rank[i] += x.level[i].span //记录一下位置
-					x = x.level[i].forward     //查看下一个节点
+				rank[i] += x.level[i].span //记录一下位置
+				x = x.level[i].forward     //查看下一个节点
 			}
 		}
 		update[i] = x
@@ -173,7 +175,7 @@ func (sl *skipList) skipListDelete(key string, score float64) int {
 		for x.level[i].forward != nil &&
 			(x.level[i].forward.score < score ||
 				(x.level[i].forward.score == score && x.level[i].forward.key < key)) {
-					x = x.level[i].forward
+			x = x.level[i].forward
 		}
 		update[i] = x
 	}
@@ -226,7 +228,7 @@ func (sl *skipList) skipListGetElementByRank(rank uint64) *skipListNode {
 // 初始化
 func New() *SortedSet {
 	s := &SortedSet{
-		dict: make(map[string]*obj),
+		dict: sync.Map{},
 		sl:   skipListInit(),
 	}
 	return s
@@ -238,52 +240,62 @@ func (s *SortedSet) Length() int64 {
 }
 
 func (s *SortedSet) Set(key string, score float64) {
-	v, ok := s.dict[key]
-
-	if ok {
-		if score != v.score {
-			s.sl.skipListDelete(key, v.score)
+	v, ook := s.dict.LoadOrStore(key,&obj{key:key,score:score})
+	if vv,ok := v.(*obj);ok {
+		if ook {
+			if score != vv.score {
+				s.sl.skipListDelete(key, vv.score)
+				s.sl.skipListInsert(key, score)
+				s.dict.Store(key,&obj{key:key,score:score,timestamp:vv.timestamp})
+			}
+		} else {
 			s.sl.skipListInsert(key, score)
-			s.dict[key].score = v.score
+			s.dict.Store(key,&obj{key:key,score:score,timestamp:time.Now().Unix()})
 		}
-	} else {
-		s.sl.skipListInsert(key, score)
-		s.dict[key] = &obj{key:key,score:score,timestamp:time.Now().Unix()}
 	}
+
+
 }
 
 func (s *SortedSet) Delete(key string) (ok bool) {
-	v, ok := s.dict[key]
+	v, ok := s.dict.Load(key)
 	if ok {
-		s.sl.skipListDelete(key, v.score)
-		delete(s.dict, key)
-		return true
+		if vv,ok := v.(*obj);ok {
+			s.sl.skipListDelete(key, vv.score)
+			s.dict.Delete(key)
+			return true
+		}
 	}
 	return false
 }
 
 //根据key查询score,没有暂时返回0
 func (s *SortedSet) GetScore(key string) (score float64, ok bool) {
-	v, ok := s.dict[key]
+	v, ok := s.dict.Load(key)
 	if ok {
-		return v.score, true
+		if vv,ok := v.(*obj);ok {
+			return vv.score, true
+		}
 	}
 	return 0, false
 }
 
 func (s *SortedSet) GetRank(key string, reverse bool) (rank int64, score float64) {
-	v, ok := s.dict[key]
+	v, ok := s.dict.Load(key)
 	if !ok {
 		return -1,0 //没找到返回位置-1，分值0
 	}
-	r := s.sl.skipListGetRank(key,v.score)
+	if vv,ok := v.(*obj);ok {
+		r := s.sl.skipListGetRank(key, vv.score)
 
-	if reverse {
-		r = s.sl.length - r
-	} else {
-		r--
+		if reverse {
+			r = s.sl.length - r
+		} else {
+			r--
+		}
+		return int64(r), vv.score
 	}
-	return int64(r), v.score
+	return -1,0
 }
 
 func (s *SortedSet) GetDataByRank(rank int64,reverse bool) (key string, score float64) {
@@ -300,25 +312,31 @@ func (s *SortedSet) GetDataByRank(rank int64,reverse bool) (key string, score fl
 	if n == nil {
 		return "", 0
 	}
-	v, ok := s.dict[n.key]
+	v, ok := s.dict.Load(n.key)
 	if !ok || v == nil {
 		return "", 0
 	}
-	return v.key, v.score
+	if vv,ok := v.(*obj);ok {
+		return vv.key, vv.score
+	}
+	return "", 0
 }
 
-func (z *SortedSet) Increase(key string, descore float64) {
-	_, score := z.GetRank(key,false)
+func (s *SortedSet) Increase(key string, descore float64) {
+	_, score := s.GetRank(key,false)
 	score += descore
-	z.Set(key,score)
+	s.Set(key,score)
 }
 
 func (s *SortedSet) GetTimeStamp(key string) int64 {
-	v, ok := s.dict[key]
+	v, ok := s.dict.Load(key)
 	if !ok {
-		return -1
+		return 0
 	}
-	return v.timestamp
+	if vv,ok := v.(*obj);ok {
+		return vv.timestamp
+	}
+	return 0
 }
 
 
