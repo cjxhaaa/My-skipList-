@@ -39,8 +39,9 @@ type (
 	}
 
 	SortedSet struct {
-		dict sync.Map
-		sl   *skipList
+		dict  sync.Map
+		sl    *skipList
+		mutex sync.Mutex
 	}
 
 )
@@ -240,6 +241,8 @@ func (s *SortedSet) Length() int64 {
 }
 
 func (s *SortedSet) Set(key string, score float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	v, ook := s.dict.LoadOrStore(key,&obj{key:key,score:score})
 	if vv,ok := v.(*obj);ok {
 		if ook {
@@ -258,6 +261,8 @@ func (s *SortedSet) Set(key string, score float64) {
 }
 
 func (s *SortedSet) Delete(key string) (ok bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	v, ok := s.dict.Load(key)
 	if ok {
 		if vv,ok := v.(*obj);ok {
@@ -281,6 +286,8 @@ func (s *SortedSet) GetScore(key string) (score float64, ok bool) {
 }
 
 func (s *SortedSet) GetRank(key string, reverse bool) (rank int64, score float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	v, ok := s.dict.Load(key)
 	if !ok {
 		return -1,0 //没找到返回位置-1，分值0
@@ -308,7 +315,10 @@ func (s *SortedSet) GetDataByRank(rank int64,reverse bool) (key string, score fl
 		rank++
 	}
 
+	s.mutex.Lock()
 	n := s.sl.skipListGetElementByRank(uint64(rank))
+	defer s.mutex.Unlock()
+
 	if n == nil {
 		return "", 0
 	}
